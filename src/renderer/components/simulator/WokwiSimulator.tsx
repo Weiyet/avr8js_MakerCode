@@ -312,10 +312,14 @@ export default function WokwiSimulator({
     useEffect(() => {
         if (!isEditMode) return;
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Don't steal keystrokes when the user is typing
-            const tag = (document.activeElement as HTMLElement)?.tagName?.toLowerCase();
+            // Don't steal keystrokes when the user is typing. Note: Monaco 0.5x can
+            // use EditContext input (no textarea), so also treat any focus inside
+            // the editor DOM as typing.
+            const active = document.activeElement as HTMLElement | null;
+            const tag = active?.tagName?.toLowerCase();
             const isTyping = tag === 'input' || tag === 'textarea'
-                || (document.activeElement as HTMLElement)?.isContentEditable;
+                || !!active?.isContentEditable
+                || !!active?.closest?.('.monaco-editor');
             if (isTyping) return;
 
             if ((e.key === 'Delete' || e.key === 'Backspace') && selectedWireId) {

@@ -128,9 +128,17 @@ export function useDiagramState(initialDiagram: WokwiDiagram): DiagramStateRetur
         setDiagramRaw(s);
     }, []);
 
-    // Keyboard shortcuts: Ctrl+Z / Ctrl+Y
+    // Keyboard shortcuts: Ctrl+Z / Ctrl+Y (diagram history)
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
+            // Never steal undo/redo from a text editor (inputs, Monaco, etc.)
+            const active = document.activeElement as HTMLElement | null;
+            const tag = active?.tagName?.toLowerCase();
+            const isTyping = tag === 'input' || tag === 'textarea'
+                || !!active?.isContentEditable
+                || !!active?.closest?.('.monaco-editor');
+            if (isTyping) return;
+
             if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
                 e.preventDefault();
                 undo();

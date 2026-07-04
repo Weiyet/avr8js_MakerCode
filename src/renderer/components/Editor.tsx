@@ -327,6 +327,10 @@ const Editor = React.memo((
             editorRef.current = measureSync('monaco-editor-create', () => monaco.editor.create(containerRef.current, {
                 model: initialModel,
                 theme: getThemeName(),
+                // Use the classic hidden-textarea input instead of the experimental
+                // EditContext (monaco 0.5x default) — EditContext has paste issues in
+                // some Chromium builds (Ctrl+V silently dropped).
+                editContext: false,
                 automaticLayout: true,
                 minimap: { enabled: false },
                 fontSize: fontSize,

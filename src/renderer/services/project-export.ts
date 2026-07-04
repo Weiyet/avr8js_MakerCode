@@ -5,8 +5,11 @@
  */
 /* eslint-disable @typescript-eslint/no-require-imports */
 import type { ProjectFile } from './project-loader';
+import { browserIpcRenderer } from './browser-ipc';
 
-const { ipcRenderer } = require('electron') as typeof import('electron');
+const ipcRenderer: any = (typeof require !== 'undefined')
+    ? require('electron').ipcRenderer
+    : browserIpcRenderer;
 
 /**
  * Export the current project to a user-chosen .avr8js file.

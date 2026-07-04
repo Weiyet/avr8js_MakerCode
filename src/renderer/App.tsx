@@ -7,6 +7,7 @@ import { parseDiagram } from '@/types/wokwi.types';
 import { resolveBoardProfileFromParts } from '../shared/avr/profiles';
 import { stringifyEmptyDiagramForBuildBoard } from '../shared/avr/board-diagrams';
 import { buildHex } from '../shared/compile';
+import { browserIpcRenderer } from './services/browser-ipc';
 import {
     discoverProjects, discoverProjectsFromRoot, getAppRoot, isProjectOperationAborted, loadProject, pickProjectsDirectory, preloadProject,
 } from '@/services/project-loader';
@@ -78,7 +79,9 @@ const NewProjectDialog = lazy(() => import('@/components/NewProjectDialog'));
 markPerf('renderer-module-evaluated');
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const ipcRenderer = require('electron').ipcRenderer;
+const ipcRenderer: any = (typeof require !== 'undefined')
+    ? require('electron').ipcRenderer
+    : browserIpcRenderer;
 
 /** Window control buttons extracted to avoid long lines */
 function TitlebarButtons() {
@@ -1787,12 +1790,62 @@ export default function App() { // NOSONAR: composition root
         { id: 'toggle-theme', label: 'Toggle Light / Dark Theme', action: () => settings.updateSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' }) },
     ];
 
+    // ── Challenge grading: submit the current code + wiring to the MakerCode backend ──
+    const [gradeResult, setGradeResult] = useState<{ pass: boolean; message: string } | null>(null);
+    const [grading, setGrading] = useState(false);
+    const handleGrade = useCallback(async () => {
+        setGrading(true);
+        setGradeResult(null);
+        try {
+            const code = files.find(f => f.name.endsWith('.ino') || f.name.endsWith('.cpp'))?.content || '';
+            const questionId = (globalThis as { __challengeId?: string }).__challengeId
+                || (currentProjectObj as { slug?: string } | null)?.slug || '';
+            const apiBase = (globalThis as { API_BASE_URL?: string }).API_BASE_URL || 'http://localhost:8000';
+            const resp = await fetch(`${apiBase}/run_arduino_question`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    question_id: questionId,
+                    code,
+                    diagram: typeof diagram === 'string' ? diagram : JSON.stringify(diagram),
+                }),
+            });
+            const r = await resp.json();
+            setGradeResult({ pass: !!r.pass, message: r.message || (r.pass ? 'PASS' : 'FAIL') });
+        } catch (e) {
+            setGradeResult({ pass: false, message: 'Could not reach the grader backend: ' + ((e as Error)?.message || String(e)) });
+        } finally {
+            setGrading(false);
+        }
+    }, [files, diagram]);
+
     return (
         <div className={[
             'flex flex-col h-screen bg-vscode-bg relative',
             'text-vscode-text w-full overflow-hidden font-sans',
             settings.theme === 'light' ? 'theme-light' : '',
         ].join(' ')}>
+            {/* ── Challenge grade (Submit) — spike ── */}
+            <div style={{ position: 'absolute', top: 44, right: 16, zIndex: 50, display: 'flex', alignItems: 'center', gap: 10 }}>
+                {gradeResult && (
+                    <div style={{
+                        padding: '6px 12px', borderRadius: 6, fontSize: 13, fontWeight: 600, maxWidth: 460,
+                        background: gradeResult.pass ? '#052e16' : '#2e0508',
+                        color: gradeResult.pass ? '#4ade80' : '#f87171',
+                        border: '1px solid ' + (gradeResult.pass ? '#16a34a' : '#dc2626'),
+                    }}>
+                        {(gradeResult.pass ? '✅ PASS — ' : '❌ FAIL — ') + gradeResult.message}
+                    </div>
+                )}
+                <button type="button" onClick={handleGrade} disabled={grading}
+                    style={{
+                        background: '#16a34a', color: '#fff', border: 0, borderRadius: 6,
+                        padding: '6px 16px', fontSize: 13, fontWeight: 700,
+                        cursor: grading ? 'default' : 'pointer', opacity: grading ? 0.5 : 1,
+                    }}>
+                    {grading ? '⏳ Grading…' : '✔ Submit / Grade'}
+                </button>
+            </div>
             {/* ── Titlebar ── */}
             <div
                 className={

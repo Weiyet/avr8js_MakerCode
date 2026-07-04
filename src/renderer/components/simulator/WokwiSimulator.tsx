@@ -131,6 +131,8 @@ export default function WokwiSimulator({
     const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
     /** ID of the currently selected part — shows border + rotate button */
     const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
+    /** Clipboard holding a copied part for Ctrl+C / Ctrl+V */
+    const clipboardPartRef = useRef<any>(null);
     /** Show/hide AVR Inspector panel */
     const [showInspector, setShowInspector] = useState(false);
     /** Show/hide Oscilloscope panel */
@@ -325,6 +327,19 @@ export default function WokwiSimulator({
                 setPopupState(null);
             }
 
+            // Delete / Backspace — remove selected part (and any wires attached to it)
+            if ((e.key === 'Delete' || e.key === 'Backspace') && selectedPartId && !selectedWireId) {
+                if (diagramRef.current && onDiagramChange) {
+                    const newParts = diagramRef.current.parts.filter(p => p.id !== selectedPartId);
+                    const newConnections = diagramRef.current.connections.filter(
+                        c => !c.from.startsWith(`${selectedPartId}:`) && !c.to.startsWith(`${selectedPartId}:`)
+                    );
+                    onDiagramChange({ ...diagramRef.current, parts: newParts, connections: newConnections });
+                }
+                setSelectedPartId(null);
+                setPopupState(null);
+            }
+
             // R — rotate selected part by 90°
             if ((e.key === 'r' || e.key === 'R') && selectedPartId) {
                 if (diagramRef.current && onDiagramChange) {
@@ -334,6 +349,39 @@ export default function WokwiSimulator({
                             : p
                     );
                     onDiagramChange({ ...diagramRef.current, parts: newParts });
+                }
+            }
+
+            // Ctrl/Cmd+C — copy the selected part to the clipboard
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C') && selectedPartId) {
+                const src = diagramRef.current?.parts.find(p => p.id === selectedPartId);
+                if (src) {
+                    clipboardPartRef.current = structuredClone(src);
+                    e.preventDefault();
+                }
+            }
+
+            // Ctrl/Cmd+V — paste the clipboard part with a fresh id, offset slightly
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V') && clipboardPartRef.current) {
+                if (diagramRef.current && onDiagramChange) {
+                    const src = clipboardPartRef.current;
+                    const base = String(src.type || 'part').replace(/^wokwi-/, '');
+                    const existing = new Set(diagramRef.current.parts.map(p => p.id));
+                    let n = 1;
+                    let newId = `${base}-${n}`;
+                    while (existing.has(newId)) { n++; newId = `${base}-${n}`; }
+                    const newPart = {
+                        ...structuredClone(src),
+                        id: newId,
+                        top: (src.top || 0) + 24,
+                        left: (src.left || 0) + 24,
+                    };
+                    onDiagramChange({ ...diagramRef.current, parts: [...diagramRef.current.parts, newPart] });
+                    // cascade subsequent pastes so they don't stack on the same spot
+                    clipboardPartRef.current = { ...src, top: newPart.top, left: newPart.left };
+                    setSelectedPartId(newId);
+                    setSelectedWireId(null);
+                    e.preventDefault();
                 }
             }
 

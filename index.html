@@ -9,6 +9,14 @@
 
 <body>
   <div id="root"></div>
+  <script>
+    // Backend selection: ?api=https://your-backend (persisted), default localhost:8000.
+    (function () {
+      var api = new URLSearchParams(location.search).get('api');
+      if (api) { localStorage.setItem('makercode_api_base', api); }
+      window.API_BASE_URL = api || localStorage.getItem('makercode_api_base') || 'http://localhost:8000';
+    })();
+  </script>
   <script type="module" src="/src/renderer/index.tsx"></script>
 </body>
 

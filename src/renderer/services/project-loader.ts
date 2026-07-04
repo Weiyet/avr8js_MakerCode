@@ -5,9 +5,12 @@
 import { parseDiagram } from '../types/wokwi.types';
 import type { WokwiDiagram } from '../types/wokwi.types';
 import { markPerf, measureAsync, measureSync } from '../utils/perf';
+import { browserIpcRenderer } from './browser-ipc';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const { ipcRenderer } = require('electron') as typeof import('electron');
+const ipcRenderer: any = (typeof require !== 'undefined')
+    ? require('electron').ipcRenderer
+    : browserIpcRenderer;
 
 export interface DiscoveredProject {
     name: string;

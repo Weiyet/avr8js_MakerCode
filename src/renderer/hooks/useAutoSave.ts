@@ -5,9 +5,12 @@
  */
 import { useEffect, useRef } from 'react';
 import type { WokwiDiagram } from '../types/wokwi.types';
+import { browserIpcRenderer } from '../services/browser-ipc';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const { ipcRenderer } = require('electron') as typeof import('electron');
+const ipcRenderer: any = (typeof require !== 'undefined')
+    ? require('electron').ipcRenderer
+    : browserIpcRenderer;
 
 interface AutoSaveOptions {
     diagram: WokwiDiagram;

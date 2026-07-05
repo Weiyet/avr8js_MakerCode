@@ -327,10 +327,6 @@ const Editor = React.memo((
             editorRef.current = measureSync('monaco-editor-create', () => monaco.editor.create(containerRef.current, {
                 model: initialModel,
                 theme: getThemeName(),
-                // Use the classic hidden-textarea input instead of the experimental
-                // EditContext (monaco 0.5x default) — EditContext has paste issues in
-                // some Chromium builds (Ctrl+V silently dropped).
-                editContext: false,
                 automaticLayout: true,
                 minimap: { enabled: false },
                 fontSize: fontSize,
@@ -362,15 +358,48 @@ const Editor = React.memo((
                 void editorRef.current?.getAction(id)?.run();
             };
 
-            // Keep common clipboard/edit shortcuts reliable inside Electron + Monaco.
+            /** Selection text, or the whole current line (+ its newline) when nothing is selected — matches Monaco's default "empty selection" clipboard behaviour. */
+            const selectionOrLine = (): { range: monaco.Range; text: string } | null => {
+                const editor = editorRef.current;
+                const model = editor?.getModel();
+                const sel = editor?.getSelection();
+                if (!editor || !model || !sel) return null;
+                if (!sel.isEmpty()) {
+                    return { range: sel, text: model.getValueInRange(sel) };
+                }
+                const line = sel.positionLineNumber;
+                if (line < model.getLineCount()) {
+                    return { range: new monaco.Range(line, 1, line + 1, 1), text: model.getLineContent(line) + '\n' };
+                }
+                return { range: new monaco.Range(line, 1, line, model.getLineMaxColumn(line)), text: model.getLineContent(line) };
+            };
+
+            // Monaco's own clipboardCopy/Paste/CutAction rely on an internal clipboard
+            // service (execCommand, or EditContext) that can silently no-op in some
+            // Chromium builds — the keydown gets "handled" but nothing reaches the OS
+            // clipboard. Bypass it and talk to navigator.clipboard directly, which we
+            // know works: https://developer.mozilla.org/docs/Web/API/Clipboard
             editorRef.current.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC, () => {
-                runAction('editor.action.clipboardCopyAction');
+                const sel = selectionOrLine();
+                if (sel?.text) void navigator.clipboard.writeText(sel.text).catch(() => runAction('editor.action.clipboardCopyAction'));
             });
             editorRef.current.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, () => {
-                runAction('editor.action.clipboardPasteAction');
+                const editor = editorRef.current;
+                const sel = editor?.getSelection();
+                if (!editor || !sel) return;
+                navigator.clipboard.readText().then((text) => {
+                    if (!text) return;
+                    editor.executeEdits('paste', [{ range: sel, text, forceMoveMarkers: true }]);
+                    editor.pushUndoStop();
+                }).catch(() => runAction('editor.action.clipboardPasteAction'));
             });
             editorRef.current.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyX, () => {
-                runAction('editor.action.clipboardCutAction');
+                const editor = editorRef.current;
+                const sel = selectionOrLine();
+                if (!editor || !sel) return;
+                navigator.clipboard.writeText(sel.text)
+                    .then(() => editor.executeEdits('cut', [{ range: sel.range, text: '', forceMoveMarkers: true }]))
+                    .catch(() => runAction('editor.action.clipboardCutAction'));
             });
             editorRef.current.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyA, () => {
                 runAction('editor.action.selectAll');

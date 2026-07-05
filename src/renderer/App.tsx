@@ -1826,7 +1826,7 @@ export default function App() { // NOSONAR: composition root
             settings.theme === 'light' ? 'theme-light' : '',
         ].join(' ')}>
             {/* ── Challenge grade (Submit) — spike ── */}
-            <div style={{ position: 'absolute', top: 44, right: 16, zIndex: 50, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ position: 'absolute', top: 84, right: 16, zIndex: 50, display: 'flex', alignItems: 'center', gap: 10 }}>
                 {gradeResult && (
                     <div style={{
                         padding: '6px 12px', borderRadius: 6, fontSize: 13, fontWeight: 600, maxWidth: 460,

@@ -33,17 +33,28 @@ async function discover() {
     return { success: true, ok: true, projects, stats: {} };
 }
 
+// `load()` is used for BOTH speculative preloading (preloadProject, fired on
+// startup for the last-opened project) and actually opening a challenge to
+// view/grade. Both share this one function, so a slow background preload of a
+// stale challenge could resolve after the user has already switched to a
+// different one and clobber __challengeId with the wrong id. Guard with a
+// monotonic sequence: only the most recently ISSUED call (not the one that
+// happens to resolve first) is allowed to set the "current" challenge id.
+let loadSeq = 0;
+
 async function load(payload: any) {
     const id: string = (payload?.dirPath ?? payload?.slug ?? '').split('/').pop() ?? '';
-    (globalThis as any).__challengeId = id;   // so the Grade button knows which challenge to submit
+    const seq = ++loadSeq;
     const q = (await getJSON(`${API_BASE}/api/arduino_question/${id}`)) ?? {};
+    if (seq === loadSeq) {
+        (globalThis as any).__challengeId = id;   // so the Grade button knows which challenge to submit
+        (globalThis as any).__challengeQuestion = q.question ?? ''; // stash for any UI that wants to show it
+    }
     const files = [
         { name: 'question.md', content: q.question ?? '', language: 'markdown' },
         { name: 'sketch.ino', content: q.template_code ?? '', language: 'cpp' },
         { name: 'diagram.json', content: q.template_diagram ?? '', language: 'json' },
     ];
-    // stash the question markdown for any UI that wants to show it
-    (globalThis as any).__challengeQuestion = q.question ?? '';
     return {
         success: true,
         ok: true,

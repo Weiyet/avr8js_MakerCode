@@ -10,11 +10,14 @@
 <body>
   <div id="root"></div>
   <script>
-    // Backend selection: ?api=https://your-backend (persisted), default localhost:8000.
+    // Backend selection: ?api=https://your-backend (persisted in localStorage).
+    // Defaults to the live MakerCode backend, so this works with no setup;
+    // pass ?api=http://localhost:8000 to point at a local backend instead.
     (function () {
+      var DEFAULT_API = 'https://stingray-app-g8ivf.ondigitalocean.app';
       var api = new URLSearchParams(location.search).get('api');
       if (api) { localStorage.setItem('makercode_api_base', api); }
-      window.API_BASE_URL = api || localStorage.getItem('makercode_api_base') || 'http://localhost:8000';
+      window.API_BASE_URL = api || localStorage.getItem('makercode_api_base') || DEFAULT_API;
     })();
   </script>
   <script type="module" src="/src/renderer/index.tsx"></script>

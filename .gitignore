@@ -8,3 +8,4 @@ dist
 sketch
 *.log
 *.hex
+grader/.hex_cache/

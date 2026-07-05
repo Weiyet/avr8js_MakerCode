@@ -9,8 +9,9 @@
  * gradeArduino(sketch, diagram, challenge) -> { pass, message, details }
  * CLI: node grade.mjs <sketch.ino> <diagram.json> <challenge-slug>
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { createHash } from 'node:crypto';
 import {
     CPU, avrInstruction, AVRTimer,
     timer0Config, timer1Config, timer2Config,
@@ -106,12 +107,29 @@ function makeSim(hex) {
     };
 }
 
+// Content-addressed disk cache for compiled hex. The golden reference solution
+// is compiled on EVERY grading call otherwise, even though its source never
+// changes between submissions — a wasted ~3.5s remote compile every time.
+// Keyed by sha256(sketch) so a code change always misses (never stale), and it
+// persists across the separate Node subprocess spawned per grading request.
+const CACHE_DIR = new URL('./.hex_cache/', import.meta.url);
+try { mkdirSync(CACHE_DIR, { recursive: true }); } catch { /* best-effort */ }
+
 async function compile(sketch) {
+    const hash = createHash('sha256').update(sketch).digest('hex');
+    const cachePath = new URL(`${hash}.json`, CACHE_DIR);
+    if (existsSync(cachePath)) {
+        try { return JSON.parse(readFileSync(cachePath, 'utf8')); } catch { /* fall through and recompile */ }
+    }
     const resp = await fetch(`${HEXI_URL}/build`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sketch, files: [], board: 'uno' }),
     });
-    return resp.json();
+    const result = await resp.json();
+    if (result && result.hex) {
+        try { writeFileSync(cachePath, JSON.stringify(result)); } catch { /* best-effort cache */ }
+    }
+    return result;
 }
 
 // ── checkers (one per spec.type) ──
@@ -414,9 +432,13 @@ function serialLines(s) {
 /** Grade by behavioural equivalence to a reference (no per-challenge spec needed). */
 export async function gradeDifferential(student, reference, opts = {}) {
     const durationMs = opts.durationMs || 3000, sampleMs = opts.sampleMs || 20;
-    const refT = await captureTrace(reference.sketch, reference.diagram, { durationMs, sampleMs });
+    // Reference and student are fully independent — compile + simulate concurrently
+    // instead of back-to-back (roughly halves latency on a cache miss).
+    const [refT, stuT] = await Promise.all([
+        captureTrace(reference.sketch, reference.diagram, { durationMs, sampleMs }),
+        captureTrace(student.sketch, student.diagram, { durationMs, sampleMs }),
+    ]);
     if (refT.error) return no(`Reference solution failed: ${refT.error}`);
-    const stuT = await captureTrace(student.sketch, student.diagram, { durationMs, sampleMs });
     if (stuT.error) return no(`Your code failed to compile:\n${stuT.error}`);
 
     // Prefer observing hardware output components (LED / RGB / bar-graph / 7-seg /
